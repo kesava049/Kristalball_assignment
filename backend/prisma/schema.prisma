@@ -1,0 +1,221 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id          String   @id @default(uuid())
+  username    String   @unique
+  passwordHash String  @map("password_hash")
+  email       String   @unique
+  fullName    String   @map("full_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  userRoles     UserRole[]
+  userBases     UserBase[]
+  purchases     Purchase[]
+  transfers     Transfer[] @relation("TransferInitiator")
+  receivedTransfers Transfer[] @relation("TransferReceiver")
+  assignments   Assignment[] @relation("AssignmentRecorder")
+  assignedAssets Assignment[] @relation("AssignedUser")
+  expenditures  Expenditure[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+model Role {
+  id          Int    @id @default(autoincrement())
+  roleName    String @unique @map("role_name")
+  description String?
+
+  // Relations
+  userRoles UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId String @map("user_id")
+  roleId Int    @map("role_id")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model Base {
+  id          String  @id @default(uuid())
+  baseName    String  @unique @map("base_name")
+  location    String
+  description String?
+
+  // Relations
+  userBases       UserBase[]
+  assets          Asset[]
+  purchases       Purchase[]
+  transfersFrom   Transfer[] @relation("SourceBase")
+  transfersTo     Transfer[] @relation("DestinationBase")
+  assignments     Assignment[]
+  expenditures    Expenditure[]
+
+  @@map("bases")
+}
+
+model UserBase {
+  userId String @map("user_id")
+  baseId String @map("base_id")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  base Base @relation(fields: [baseId], references: [id], onDelete: Cascade)
+
+  @@id([userId, baseId])
+  @@map("user_bases")
+}
+
+model EquipmentType {
+  id          String  @id @default(uuid())
+  typeName    String  @unique @map("type_name")
+  category    String
+  description String?
+
+  // Relations
+  assets Asset[]
+
+  @@map("equipment_types")
+}
+
+model Asset {
+  id               String   @id @default(uuid())
+  equipmentTypeId  String   @map("equipment_type_id")
+  modelName        String   @map("model_name")
+  serialNumber     String?  @unique @map("serial_number")
+  currentBaseId    String   @map("current_base_id")
+  quantity         Int      @default(1)
+  status           String   @default("Operational")
+  lastUpdatedAt    DateTime @default(now()) @map("last_updated_at")
+  isFungible       Boolean  @default(false) @map("is_fungible")
+  currentBalance   Int      @default(0) @map("current_balance")
+
+  // Relations
+  equipmentType EquipmentType @relation(fields: [equipmentTypeId], references: [id])
+  currentBase   Base          @relation(fields: [currentBaseId], references: [id])
+  purchases     Purchase[]
+  transfers     Transfer[]
+  assignments   Assignment[]
+  expenditures  Expenditure[]
+
+  @@map("assets")
+}
+
+model Purchase {
+  id                   String   @id @default(uuid())
+  assetId              String   @map("asset_id")
+  quantity             Int
+  unitCost             Float?   @map("unit_cost")
+  totalCost            Float?   @map("total_cost")
+  purchaseDate         DateTime @map("purchase_date")
+  supplierInfo         String?  @map("supplier_info")
+  receivingBaseId      String   @map("receiving_base_id")
+  purchaseOrderNumber  String?  @unique @map("purchase_order_number")
+  recordedByUserId     String   @map("recorded_by_user_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  // Relations
+  asset         Asset @relation(fields: [assetId], references: [id])
+  receivingBase Base  @relation(fields: [receivingBaseId], references: [id])
+  recordedBy    User  @relation(fields: [recordedByUserId], references: [id])
+
+  @@map("purchases")
+}
+
+model Transfer {
+  id                  String    @id @default(uuid())
+  assetId             String    @map("asset_id")
+  assetSerialNumber   String?   @map("asset_serial_number")
+  quantity            Int
+  sourceBaseId        String    @map("source_base_id")
+  destinationBaseId   String    @map("destination_base_id")
+  transferDate        DateTime  @map("transfer_date")
+  reason              String?
+  status              String    @default("Initiated")
+  initiatedByUserId   String    @map("initiated_by_user_id")
+  receivedByUserId    String?   @map("received_by_user_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  completedAt         DateTime? @map("completed_at")
+
+  // Relations
+  asset         Asset @relation(fields: [assetId], references: [id])
+  sourceBase    Base  @relation("SourceBase", fields: [sourceBaseId], references: [id])
+  destinationBase Base @relation("DestinationBase", fields: [destinationBaseId], references: [id])
+  initiatedBy   User  @relation("TransferInitiator", fields: [initiatedByUserId], references: [id])
+  receivedBy    User? @relation("TransferReceiver", fields: [receivedByUserId], references: [id])
+
+  @@map("transfers")
+}
+
+model Assignment {
+  id                    String    @id @default(uuid())
+  assetId               String    @map("asset_id")
+  assignedToUserId      String    @map("assigned_to_user_id")
+  assignmentDate        DateTime  @map("assignment_date")
+  baseOfAssignmentId    String    @map("base_of_assignment_id")
+  purpose               String?
+  expectedReturnDate    DateTime? @map("expected_return_date")
+  returnedDate          DateTime? @map("returned_date")
+  isActive              Boolean   @default(true) @map("is_active")
+  recordedByUserId      String    @map("recorded_by_user_id")
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  asset             Asset @relation(fields: [assetId], references: [id])
+  assignedTo        User  @relation("AssignedUser", fields: [assignedToUserId], references: [id])
+  baseOfAssignment  Base  @relation(fields: [baseOfAssignmentId], references: [id])
+  recordedBy        User  @relation("AssignmentRecorder", fields: [recordedByUserId], references: [id])
+
+  @@map("assignments")
+}
+
+model Expenditure {
+  id                 String   @id @default(uuid())
+  assetId            String   @map("asset_id")
+  quantityExpended   Int      @map("quantity_expended")
+  expenditureDate    DateTime @map("expenditure_date")
+  baseId             String   @map("base_id")
+  reason             String?
+  reportedByUserId   String   @map("reported_by_user_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  // Relations
+  asset      Asset @relation(fields: [assetId], references: [id])
+  base       Base  @relation(fields: [baseId], references: [id])
+  reportedBy User  @relation(fields: [reportedByUserId], references: [id])
+
+  @@map("expenditures")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  timestamp DateTime @default(now())
+  userId    String?  @map("user_id")
+  action    String
+  details   String   // JSON string for storing dynamic details
+  ipAddress String?  @map("ip_address")
+  status    String
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
